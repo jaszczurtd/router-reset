@@ -3,52 +3,41 @@
 
 static int currentState = WIFI_NOT_CONNECTED;
 static int wifiConnectionProcessSeconds = 0;
-static String srv1, srv2;
-
-static WiFiClient client;
-static IPAddress ping1Target, ping2Target;
 
 static int ping1Times[MAX_PINGS];
 static int ping1cnt = 0;
 static int ping2Times[MAX_PINGS];
 static int ping2cnt = 0;
 
-void routerEnabled(int state) {
-  digitalWrite(ROUTER_RELAY_PIN, state); 
+void routerEnabled(bool state) {
+  hal_gpio_write(ROUTER_RELAY_PIN, state); 
 }
 
 void startWifiConnection() {
   deb("trying to connect to WiFi: %s", WIFI_SSID);
 
-  WiFi.disconnect(true);     
-  WiFi.mode(WIFI_STA);
-  WiFi.beginNoBlock(WIFI_SSID, WIFI_PASSWORD);
+  hal_wifi_disconnect(true);     
+  hal_wifi_set_mode(HAL_WIFI_MODE_STA);
+  hal_wifi_begin_station(WIFI_SSID, WIFI_PASSWORD, true);
 }
 
 void stopWifiConnection() {
   deb("performing disconnection...");
 
-  WiFi.disconnect(true);     
-  WiFi.mode(WIFI_OFF);
+  hal_wifi_disconnect(true);     
+  hal_wifi_set_mode(HAL_WIFI_MODE_OFF);
 }
 
 void setup() {
   debugInit();
 
-  pinMode(LED_BUILTIN, OUTPUT);
-  pinMode(0, OUTPUT); //RP2040 PicoW pin 0
-  digitalWrite(LED_BUILTIN, LOW);  
+  hal_gpio_set_mode(LED_BUILTIN, HAL_GPIO_OUTPUT);
+  hal_gpio_set_mode(ROUTER_RELAY_PIN, HAL_GPIO_OUTPUT);
+  hal_gpio_write(LED_BUILTIN, false);  
 
-  WiFi.setHostname(DEVICE_DOMAIN);
+  hal_wifi_set_hostname(DEVICE_DOMAIN);
 
-  //adresses defined in reseter.hpp
-  ping1Target.fromString(PING_ONE);
-  srv1 = ping1Target.toString();
-
-  ping2Target.fromString(PING_TWO);
-  srv2 = ping2Target.toString();
-
-  watchdog_enable(MAX_DEAD_TIME, false);  
+  hal_watchdog_enable(MAX_DEAD_TIME, false);  
 }
 
 static unsigned long t0;
@@ -59,7 +48,7 @@ void setState(int state) {
 }
 
 void loop() {
-  watchdog_update();
+  hal_watchdog_feed();
 
   switch(currentState) {
     case WIFI_NOT_CONNECTED: {
@@ -73,27 +62,29 @@ void loop() {
       memset(ping2Times, 0, sizeof(ping2Times));
 
       startWifiConnection();
-      t0 = millis();
+      t0 = hal_millis();
     }
     break;
 
     case WIFI_CONNECTING: {
       
-      if(WiFi.status() == WL_CONNECTED) {
+      if(hal_wifi_is_connected()) {
 
-        deb("connected to WiFi, IP: %s", WiFi.localIP().toString().c_str());
+        char ipBuf[20];
+        hal_wifi_get_local_ip(ipBuf, sizeof(ipBuf));
+        deb("connected to WiFi, IP: %s", ipBuf);
 
-        digitalWrite(LED_BUILTIN, HIGH);  
+        hal_gpio_write(LED_BUILTIN, true);  
 
-        WiFi.setTimeout(PING_TIMEOUT);
+        hal_wifi_set_timeout_ms(PING_TIMEOUT);
 
-        t0 = millis();
+        t0 = hal_millis();
         setState(WIFI_CONNECTED);
 
       } else {
-        if(millis() - t0 > SECOND) {
-          t0 = millis();
-          digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+        if(hal_millis() - t0 > SECOND) {
+          t0 = hal_millis();
+          hal_gpio_write(LED_BUILTIN, !hal_gpio_read(LED_BUILTIN));
 
           deb("connecting for %ld seconds...", wifiConnectionProcessSeconds);
 
@@ -115,43 +106,43 @@ void loop() {
     case WIFI_RESET_START: {
       stopWifiConnection();
       routerEnabled(OFF);
-      t0 = millis();
+      t0 = hal_millis();
       setState(WIFI_RESET_END);
     }
     break;
 
     case WIFI_RESET_END: {
-      if(millis() - t0 > SECOND * WIFI_MAX_RESET_TIME_SECONDS) {
+      if(hal_millis() - t0 > SECOND * WIFI_MAX_RESET_TIME_SECONDS) {
         setState(WIFI_NOT_CONNECTED);
       }
     }
     break;
 
     case WIFI_CONNECTED: {
-      if(millis() - t0 > SECOND) {
+      if(hal_millis() - t0 > SECOND) {
         unsigned long t_ping;
         int res1 = -1, res2 = -1;    
         unsigned long dt1 = 0, dt2 = 0;
         
-        t_ping = millis();
-        res1 = WiFi.ping(ping1Target); 
-        dt1 = millis() - t_ping;
-        watchdog_update();
+        t_ping = hal_millis();
+        res1 = hal_wifi_ping(PING_ONE); 
+        dt1 = hal_millis() - t_ping;
+        hal_watchdog_feed();
 
-        t_ping = millis();
-        res2 = WiFi.ping(ping2Target); 
-        dt2 = millis() - t_ping;
-        watchdog_update();
+        t_ping = hal_millis();
+        res2 = hal_wifi_ping(PING_TWO); 
+        dt2 = hal_millis() - t_ping;
+        hal_watchdog_feed();
 
         if (res1 >= 0 || res2 >= 0) {
-          deb("Ping do %s / %s : %ld / %ld ms", srv1.c_str(), srv2.c_str(), dt1, dt2);
+          deb("Ping do %s / %s : %ld / %ld ms", PING_ONE, PING_TWO, dt1, dt2);
         } else {
 
           if(res1 < 0) {
-            deb("No response from %s (timeout)", srv1.c_str());
+            deb("No response from %s (timeout)", PING_ONE);
           }
           if(res2 < 0) {
-            deb("No response from %s (timeout)", srv2.c_str());
+            deb("No response from %s (timeout)", PING_TWO);
           }
 
         }  
@@ -183,14 +174,14 @@ void loop() {
         percentLost2 = percentFrom(howManyLost2, MAX_PINGS);
 
         deb("percent of lost packet for %s is:%d%%, for %s is:%d%%", 
-          srv1.c_str(), percentLost1, srv2.c_str(), percentLost2);
+          PING_ONE, percentLost1, PING_TWO, percentLost2);
 
         if(percentLost1 > MAX_PERCENT_OF_LOST_PINGS && 
             percentLost2 > MAX_PERCENT_OF_LOST_PINGS) {
             setState(WIFI_RESET_START);
         }
 
-        t0 = millis();
+        t0 = hal_millis();
       }
     }
     break;
