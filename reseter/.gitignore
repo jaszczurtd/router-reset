@@ -78,6 +78,7 @@ test/unit/out/
 www/cache/
 __pycache__
 *.bin
+.vscode/.cortex-debug.registers.state.json
 *.elf
 *.hex
 *.lst

@@ -6,7 +6,7 @@ Waits for a serial device, connects, reads continuously, and when the device
 disappears it goes back to waiting. Ctrl+C exits.
 
 Supported modes:
-- pico  : only Pico/RP2040 USB CDC devices, Debug Probe excluded
+- pico  : only Pico USB CDC devices (RP2040 / RP2350), Debug Probe excluded
 - probe : only Raspberry Pi Debug Probe / Picoprobe
 - any   : any serial port (/dev/ttyACM* or /dev/ttyUSB*)
 
@@ -86,6 +86,29 @@ def classify_port(port_info):
     if uid is not None and uid.startswith("2e8a:"):
         return "pico"
 
+    # Heuristic fallback for boards exposing non-Raspberry VID:PID pairs.
+    text_parts = [
+        getattr(port_info, "description", ""),
+        getattr(port_info, "manufacturer", ""),
+        getattr(port_info, "product", ""),
+        getattr(port_info, "interface", ""),
+        getattr(port_info, "hwid", ""),
+    ]
+    text_blob = " ".join(part for part in text_parts if part).lower()
+
+    if "debug probe" in text_blob or "picoprobe" in text_blob or "cmsis-dap" in text_blob:
+        return "probe"
+
+    pico_keywords = (
+        "raspberry pi pico",
+        "pico 2",
+        "pico2",
+        "rp2040",
+        "rp2350",
+    )
+    if any(keyword in text_blob for keyword in pico_keywords):
+        return "pico"
+
     return "other"
 
 
@@ -126,7 +149,7 @@ def find_settings():
 
 def get_preferred_port(cli_port):
     if cli_port:
-        return cli_port
+        return cli_port, True
 
     settings = find_settings()
     candidates = [
@@ -137,31 +160,34 @@ def get_preferred_port(cli_port):
 
     for port in candidates:
         if isinstance(port, str) and port.strip():
-            return port.strip()
+            return port.strip(), False
 
-    return ""
+    return "", False
 
 
-def find_port(mode, preferred_port=""):
+def find_port(mode, preferred_port="", strict_preferred=False):
     if preferred_port:
         if os.path.exists(preferred_port):
             return preferred_port, f"preferred:{preferred_port}"
-        return None, f"preferred-missing:{preferred_port}"
+        if strict_preferred:
+            return None, f"preferred-missing:{preferred_port}"
 
     ports = list_serial_ports()
     for port in ports:
         if port_matches_mode(port, mode):
             return port.device, format_port_info(port)
 
+    if preferred_port:
+        return None, f"preferred-missing:{preferred_port};not-found"
     return None, "not-found"
 
 
-def wait_for_device(mode, preferred_port=""):
+def wait_for_device(mode, preferred_port="", strict_preferred=False):
     spinner = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
     i = 0
 
     while True:
-        port, reason = find_port(mode, preferred_port)
+        port, reason = find_port(mode, preferred_port, strict_preferred)
 
         if port:
             print(f"\r{' ' * 140}\r", end="", flush=True)
@@ -323,7 +349,7 @@ def parse_args():
 
 def main():
     args = parse_args()
-    preferred = get_preferred_port(args.port)
+    preferred, strict_preferred = get_preferred_port(args.port)
 
     print()
     print(f"{BOLD}{CYAN}╔══════════════════════════════════════════════════════════╗{NC}")
@@ -336,10 +362,10 @@ def main():
     print()
 
     while True:
-        port, _ = find_port(args.mode, preferred)
+        port, _ = find_port(args.mode, preferred, strict_preferred)
 
         if not port:
-            port = wait_for_device(args.mode, preferred)
+            port = wait_for_device(args.mode, preferred, strict_preferred)
 
         result = monitor(port, args.baud)
 
