@@ -1,5 +1,7 @@
 #include "stateMachine.hpp"
 
+#include <cstdint>
+
 static int currentState = WIFI_NOT_CONNECTED;
 static int wifiConnectionProcessSeconds = 0;
 
@@ -10,7 +12,6 @@ static int ping2cnt = 0;
 
 static void stopWireGuard();
 
-static WireGuard wg;
 static unsigned long wgHandshakeStartMs = 0;
 static bool handshakeKickStarted = false;
 static unsigned long ntpSyncStartMs = 0;
@@ -38,21 +39,14 @@ void stopWifiConnection() {
 }
 
 static bool startWireGuard() {
-
-  IPAddress localIP, allowedIP, allowedMask;
-
-  localIP.fromString(getWireguardLocalIP(getMyMAC()));
-  allowedIP.fromString(WG_ALLOWED_IP);
-  allowedMask.fromString(WG_ALLOWED_MASK);
-
-  bool ok = wg.beginAdvanced(
-      localIP,
+  bool ok = hal_wireguard_begin_advanced_text(
+      getWireguardLocalIP(getMyMAC()),
       getWireguardPrivateKey(getMyMAC()),
       WG_ENDPOINT,
       WG_SERVER_PUBLIC_KEY,
       WG_ENDPOINT_PORT,
-      allowedIP,
-      allowedMask
+      WG_ALLOWED_IP,
+      WG_ALLOWED_MASK
     );
 
   if (!ok) {
@@ -63,8 +57,8 @@ static bool startWireGuard() {
 }
 
 static void stopWireGuard() {
-  if (wg.is_initialized()) {
-    wg.end();
+  if(hal_wireguard_is_initialized()) {
+    hal_wireguard_end();
   }
 }
 
@@ -210,7 +204,7 @@ void mainLoop() {
         break;
       }
 
-      if (wg.peerUp()) {
+      if(hal_wireguard_peer_up_quick()) {
         deb("WireGuard peer up");
         t0 = hal_millis();
         setState(MQTT_START);
@@ -218,10 +212,14 @@ void mainLoop() {
       }
 
       if(!handshakeKickStarted) {
-        IPAddress kicker;
-        kicker.fromString(getWireguardLocalIP(getMyMAC()));
-        wg.kickHandshake(kicker, 9);
-        deb("starting WireGuard handshake kick");
+        const char *kickerIpText = getWireguardLocalIP(getMyMAC());
+
+        if(hal_wireguard_kick_handshake_text(kickerIpText, 9u, WG_HANDSHAKE_KICK_INTERVAL_MS)) {
+          deb("starting WireGuard handshake kick");
+        } else {
+          deb("WireGuard handshake kick failed for IP: %s", kickerIpText ? kickerIpText : "(null)");
+        }
+
         handshakeKickStarted = true;
       }
 
@@ -271,7 +269,7 @@ void mainLoop() {
     }
 
     case CONNECTED_AND_WORKING: {
-      if (!wg.peerUp()) {
+      if(!hal_wireguard_peer_up_quick()) {
         wgHandshakeStartMs = hal_millis();
         t0 = hal_millis();
         setState(WG_HANDSHAKE);

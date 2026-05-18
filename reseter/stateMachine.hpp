@@ -3,10 +3,6 @@
 #include <JaszczurHAL.h>
 #include <tools.h>
 #include <Credentials.h>
-#include <IPAddress.h>
-#include <PubSubClient.h>
-#include <utils/cJSON.h>
-#include <arduino-wireguard-pico-w.h>
 #include <time.h>
 
 #include "utils.hpp"
