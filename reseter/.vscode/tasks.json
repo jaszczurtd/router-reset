@@ -34,10 +34,7 @@
             "detail": "Ctrl+Shift+1 - compile sketch",
             "type": "shell",
             "command": "bash",
-            "args": [
-                "-c",
-                "CLI='${config:arduino.cliPath}'; CLI=\"${CLI:-arduino-cli}\"; FQBN='${config:arduino.fqbn}'; LIBS='${config:arduino.sketchbookPath}/libraries'; VERBOSE='${config:arduino.verbose}'; VFLAG=''; if [ \"$VERBOSE\" = \"true\" ]; then VFLAG='-v'; fi; $CLI compile --fqbn \"$FQBN\" --build-path '${workspaceFolder}/.build' --libraries \"$LIBS\" --build-property \"compiler.cpp.extra_flags=-I '${workspaceFolder}'\" --build-property \"compiler.c.extra_flags=-I '${workspaceFolder}'\" --warnings all $VFLAG '${workspaceFolder}'"
-            ],
+            "args": ["${workspaceFolder}/scripts/arduino-task.sh", "build"],
             "group": {
                 "kind": "build",
                 "isDefault": true
@@ -68,10 +65,7 @@
             "detail": "Compile with debug symbols (auto-run by F5/Run)",
             "type": "shell",
             "command": "bash",
-            "args": [
-                "-c",
-                "CLI='${config:arduino.cliPath}'; CLI=\"${CLI:-arduino-cli}\"; FQBN='${config:arduino.fqbn}'; LIBS='${config:arduino.sketchbookPath}/libraries'; $CLI compile --fqbn \"$FQBN\" --build-path '${workspaceFolder}/.build' --libraries \"$LIBS\" --build-property \"compiler.cpp.extra_flags=-I '${workspaceFolder}'\" --build-property \"compiler.c.extra_flags=-I '${workspaceFolder}'\" --optimize-for-debug --warnings all '${workspaceFolder}'"
-            ],
+            "args": ["${workspaceFolder}/scripts/arduino-task.sh", "build-debug"],
             "group": "build",
             "presentation": {
                 "echo": true,
@@ -96,13 +90,10 @@
         },
         {
             "label": "Arduino: Upload",
-            "detail": "Ctrl+Shift+2 - start persistent monitor (if needed) + compile + upload",
+            "detail": "Ctrl+Shift+2 - auto detect board/port, compile + upload, restart monitor if active",
             "type": "shell",
             "command": "bash",
-            "args": [
-                "-c",
-                "MONITOR='${workspaceFolder}/scripts/serial-persistent.py'; if ! pgrep -f \"serial-persistent.py -m pico\" >/dev/null 2>&1; then nohup python3 \"$MONITOR\" -m pico >/tmp/fiesta-persistent-monitor.log 2>&1 & fi; CLI='${config:arduino.cliPath}'; CLI=\"${CLI:-arduino-cli}\"; FQBN='${config:arduino.fqbn}'; LIBS='${config:arduino.sketchbookPath}/libraries'; LIB_ARGS=(); if [ -d \"$LIBS\" ]; then LIB_ARGS=(--libraries \"$LIBS\"); fi; PORT='${config:arduino.uploadPort}'; UPLOAD_ARGS=(--upload); if [ -n \"$PORT\" ] && [ -e \"$PORT\" ]; then UPLOAD_ARGS+=(--port \"$PORT\"); else echo \"[WARN] Port '$PORT' not available, using auto-detect\"; fi; VERBOSE='${config:arduino.verbose}'; VFLAG=''; if [ \"$VERBOSE\" = \"true\" ]; then VFLAG='-v'; fi; $CLI compile --fqbn \"$FQBN\" --build-path '${workspaceFolder}/.build' \"${LIB_ARGS[@]}\" --build-property \"compiler.cpp.extra_flags=-I '${workspaceFolder}'\" --build-property \"compiler.c.extra_flags=-I '${workspaceFolder}'\" \"${UPLOAD_ARGS[@]}\" --warnings all $VFLAG '${workspaceFolder}'"
-            ],
+            "args": ["${workspaceFolder}/scripts/arduino-task.sh", "upload"],
             "presentation": {
                 "echo": true,
                 "reveal": "always",
@@ -144,7 +135,7 @@
             "detail": "Ctrl+Shift+3 - waits for Pico (VID:PID), connects, then reconnects after unplug",
             "type": "shell",
             "command": "python3",
-            "args": ["${workspaceFolder}/scripts/serial-persistent.py", "-m", "pico"],
+            "args": ["${workspaceFolder}/scripts/serial-persistent.py", "-m", "pico", "--replace-existing"],
             "presentation": {
                 "echo": true,
                 "reveal": "always",
@@ -160,7 +151,7 @@
             "detail": "Ctrl+Shift+5 - monitor for Raspberry Pi Debug Probe / Picoprobe",
             "type": "shell",
             "command": "python3",
-            "args": ["${workspaceFolder}/scripts/serial-persistent.py", "-m", "probe"],
+            "args": ["${workspaceFolder}/scripts/serial-persistent.py", "-m", "probe", "--replace-existing"],
             "presentation": {
                 "echo": true,
                 "reveal": "always",
@@ -176,7 +167,7 @@
             "detail": "Monitor any /dev/ttyACM* or /dev/ttyUSB* device",
             "type": "shell",
             "command": "python3",
-            "args": ["${workspaceFolder}/scripts/serial-persistent.py", "-m", "any"],
+            "args": ["${workspaceFolder}/scripts/serial-persistent.py", "-m", "any", "--replace-existing"],
             "presentation": {
                 "echo": true,
                 "reveal": "always",

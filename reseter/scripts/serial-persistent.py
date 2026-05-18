@@ -15,6 +15,7 @@ VID:PID filtering.
 """
 
 import argparse
+import atexit
 import glob
 import json
 import os
@@ -53,11 +54,104 @@ DEBUG_PROBE_IDS = {
     "2e8a:0004",  # Picoprobe older firmware
 }
 
+INSTANCE_LOCK_FD = None
+
+
+class PortBusyError(serial.SerialException):
+    """Raised when serial port is locked by another process."""
+
+
+def _read_lock_holder_pid(fd):
+    try:
+        with os.fdopen(os.dup(fd), "r", encoding="utf-8", errors="ignore") as handle:
+            value = handle.read().strip()
+    except Exception:
+        return None
+
+    if value and value.isdigit():
+        return int(value)
+
+    return None
+
+
+def _write_lock_holder_pid(fd):
+    os.ftruncate(fd, 0)
+    os.write(fd, f"{os.getpid()}\n".encode("utf-8"))
+    os.fsync(fd)
+
 
 def usb_id_str(vid, pid):
     if vid is None or pid is None:
         return None
     return f"{vid:04x}:{pid:04x}"
+
+
+def acquire_instance_lock(mode, replace_existing=False):
+    global INSTANCE_LOCK_FD
+
+    lock_path = f"/tmp/reseter-serial-persistent-{mode}.lock"
+    fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o644)
+
+    import fcntl
+
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        holder_pid = _read_lock_holder_pid(fd)
+
+        if not replace_existing:
+            holder_text = str(holder_pid) if holder_pid is not None else "unknown"
+            os.close(fd)
+            print(
+                f"{YELLOW}[WARN] Another persistent monitor (mode={mode}) is already running"
+                f" [pid={holder_text}]. Exiting duplicate instance.{NC}"
+            )
+            return False
+
+        if holder_pid is not None and holder_pid != os.getpid():
+            try:
+                os.kill(holder_pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            except PermissionError:
+                os.close(fd)
+                print(
+                    f"{RED}[ERROR] Cannot replace monitor pid={holder_pid} (permission denied).{NC}"
+                )
+                return False
+
+        locked = False
+        for _ in range(40):
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                locked = True
+                break
+            except BlockingIOError:
+                time.sleep(0.1)
+
+        if not locked:
+            holder_text = str(holder_pid) if holder_pid is not None else "unknown"
+            os.close(fd)
+            print(
+                f"{RED}[ERROR] Failed to take over monitor lock (mode={mode}, holder={holder_text}).{NC}"
+            )
+            return False
+
+    _write_lock_holder_pid(fd)
+    INSTANCE_LOCK_FD = fd
+    return True
+
+
+def release_instance_lock():
+    global INSTANCE_LOCK_FD
+    if INSTANCE_LOCK_FD is None:
+        return
+
+    try:
+        os.close(INSTANCE_LOCK_FD)
+    except Exception:
+        pass
+    INSTANCE_LOCK_FD = None
 
 
 def is_serial_candidate(device):
@@ -132,6 +226,13 @@ def format_port_info(port_info):
     return f"{port_info.device}[{kind}|{uid}|{desc}]"
 
 
+def classify_device(device_path):
+    for port in list_serial_ports():
+        if port.device == device_path:
+            return classify_port(port)
+    return "other"
+
+
 def find_settings():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_dir = os.path.dirname(script_dir)
@@ -168,7 +269,12 @@ def get_preferred_port(cli_port):
 def find_port(mode, preferred_port="", strict_preferred=False):
     if preferred_port:
         if os.path.exists(preferred_port):
-            return preferred_port, f"preferred:{preferred_port}"
+            if strict_preferred:
+                return preferred_port, f"preferred:{preferred_port}"
+
+            preferred_kind = classify_device(preferred_port)
+            if mode == "any" or preferred_kind == mode:
+                return preferred_port, f"preferred:{preferred_port}"
         if strict_preferred:
             return None, f"preferred-missing:{preferred_port}"
 
@@ -254,7 +360,16 @@ def open_serial(port, baud):
     except Exception:
         pass
 
-    ser.open()
+    try:
+        ser.open()
+    except serial.SerialException as err:
+        message = str(err).lower()
+        lock_conflict = "exclusively lock port" in message or "resource temporarily unavailable" in message
+
+        if lock_conflict:
+            raise PortBusyError(str(err)) from err
+
+        raise
     _clear_hupcl(ser.fd)
 
     try:
@@ -280,6 +395,9 @@ def open_serial(port, baud):
 def monitor(port, baud):
     try:
         ser = open_serial(port, baud)
+    except PortBusyError as e:
+        print(f"{YELLOW}Port busy ({port}): {e}{NC}")
+        return "busy"
     except serial.SerialException as e:
         print(f"{RED}Cannot open {port}: {e}{NC}")
         return "error"
@@ -344,11 +462,21 @@ def parse_args():
         default="pico",
         help="Autodetection mode (default: pico)",
     )
+    parser.add_argument(
+        "--replace-existing",
+        action="store_true",
+        help="Replace running monitor process in the same mode",
+    )
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
+
+    if not acquire_instance_lock(args.mode, args.replace_existing):
+        return
+    atexit.register(release_instance_lock)
+
     preferred, strict_preferred = get_preferred_port(args.port)
 
     print()
@@ -362,6 +490,7 @@ def main():
     print()
 
     while True:
+        preferred, strict_preferred = get_preferred_port(args.port)
         port, _ = find_port(args.mode, preferred, strict_preferred)
 
         if not port:
@@ -377,6 +506,10 @@ def main():
             print(f"\n{DIM}{'─' * 80}{NC}")
             print(f"{YELLOW}Device disconnected: {port}{NC}\n")
             time.sleep(0.5)
+            continue
+
+        if result == "busy":
+            time.sleep(1.0)
             continue
 
         if result == "error":

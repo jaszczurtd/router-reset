@@ -1,7 +1,7 @@
 {
     "arduino.cliPath": "arduino-cli",
-    "arduino.fqbn": "rp2040:rp2040:rpipico2w",
-    "arduino.boardDescription": "Raspberry Pi Pico 2 W (RP2350)",
+    "arduino.fqbn": "rp2040:rp2040:rpipicow",
+    "arduino.boardDescription": "Raspberry Pi Pico W (RP2040)",
     "arduino.uploadPort": "/dev/ttyACM0",
     "arduino.sketchbookPath": "/home/jaszczurtd/development/projects_git",
     "arduino.buildDir": "${workspaceFolder}/.build",
@@ -21,5 +21,6 @@
     },
     "search.exclude": {
         "**/.build": true
-    }
+    },
+    "persistentSerialMonitor.port": "/dev/ttyACM0"
 }
