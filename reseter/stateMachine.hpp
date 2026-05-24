@@ -45,7 +45,7 @@ inline const char *printableStates[] = {
     "WIFI_RESET_END"
 };
 
-#define PING_TIMEOUT 1000
+#define PING_TIMEOUT SECOND
 
 #define MAX_PINGS 200
 #define MAX_PERCENT_OF_LOST_PINGS 75
@@ -57,6 +57,8 @@ inline const char *printableStates[] = {
 #define WG_HANDSHAKE_KICK_INTERVAL_MS 250
 
 #define NTP_SYNC_TIMEOUT_SECONDS 20
+
+#define MAX_TIMEOUT (SECOND * 5)
 
 void initialization();
 void mainLoop();

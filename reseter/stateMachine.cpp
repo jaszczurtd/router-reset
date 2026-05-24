@@ -23,9 +23,24 @@ void routerEnabled(bool state) {
 void startWifiConnection() {
   deb("trying to connect to WiFi: %s", WIFI_SSID);
 
-  hal_wifi_disconnect(true);     
-  hal_wifi_set_mode(HAL_WIFI_MODE_STA);
-  hal_wifi_begin_station(WIFI_SSID, WIFI_PASSWORD, true);
+  hal_watchdog_feed();
+  if (!hal_wifi_disconnect(true)) {
+    derr("hal_wifi_disconnect failed");
+  }
+  hal_delay_ms(50);
+  if (!hal_wifi_set_hostname(getMyHostname())) {
+    derr("hal_wifi_set_hostname failed");
+  }
+  if (!hal_wifi_set_mode(HAL_WIFI_MODE_STA)) {
+    derr("hal_wifi_set_mode(STA) failed");
+  }
+  if (!hal_wifi_begin_station(WIFI_SSID, WIFI_PASSWORD, true)) {
+    derr("hal_wifi_begin_station failed");
+  }
+  if (!hal_wifi_set_timeout_ms(MAX_TIMEOUT)) {
+    derr("hal_wifi_set_timeout_ms failed");
+  }
+  hal_watchdog_feed();
 }
 
 void stopWifiConnection() {
@@ -65,14 +80,14 @@ static void stopWireGuard() {
 void initialization() {
   debugInit();
 
-  hal_gpio_set_mode(LED_BUILTIN, HAL_GPIO_OUTPUT);
+  //relay 0
   hal_gpio_set_mode(ROUTER_RELAY_PIN, HAL_GPIO_OUTPUT);
+
+  //led
+  hal_gpio_set_mode(LED_BUILTIN, HAL_GPIO_OUTPUT);
   hal_gpio_write(LED_BUILTIN, false);  
 
-  hal_wifi_set_hostname(DEVICE_DOMAIN);
-
   hal_watchdog_enable(MAX_DEAD_TIME, false);
-
 }
 
 static unsigned long t0;
@@ -107,7 +122,7 @@ void mainLoop() {
 
         char ipBuf[20];
         hal_wifi_get_local_ip(ipBuf, sizeof(ipBuf));
-        deb("connected to WiFi, IP: %s", ipBuf);
+        deb("connected to WiFi %s, IP: %s", WIFI_SSID, ipBuf);
 
         hal_gpio_write(LED_BUILTIN, true);  
 
@@ -125,7 +140,7 @@ void mainLoop() {
           t0 = hal_millis();
           hal_gpio_write(LED_BUILTIN, !hal_gpio_read(LED_BUILTIN));
 
-          deb("mac:%s connecting for %ld seconds...", getMyMAC(), wifiConnectionProcessSeconds);
+          deb("mac:%s connecting to %s for %ld seconds...", getMyMAC(), WIFI_SSID, wifiConnectionProcessSeconds);
 
           if(wifiConnectionProcessSeconds > 0 && 
               wifiConnectionProcessSeconds % SECONDS_IN_MINUTE == 0) {
@@ -281,12 +296,12 @@ void mainLoop() {
         unsigned long dt1 = 0, dt2 = 0;
          
         t_ping = hal_millis();
-        res1 = hal_wifi_ping(PING_ONE); 
+        res1 = hal_wifi_ping_ex(PING_ONE, PING_TIMEOUT); 
         dt1 = hal_millis() - t_ping;
         hal_watchdog_feed();
 
         t_ping = hal_millis();
-        res2 = hal_wifi_ping(PING_TWO); 
+        res2 = hal_wifi_ping_ex(PING_TWO, PING_TIMEOUT); 
         dt2 = hal_millis() - t_ping;
         hal_watchdog_feed();
 
