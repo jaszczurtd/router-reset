@@ -1,5 +1,5 @@
 {
-    "board": "rp2040:rp2040:rpipico2w",
+    "board": "rp2040:rp2040:rpipicow",
     "configuration": "flash=2097152_0,freq=125,dbgport=Serial,dbglvl=None,usbstack=picosdk",
     "port": "COM19",
     "programmer": "rp2040:edbg",

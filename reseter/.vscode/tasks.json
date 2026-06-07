@@ -13,7 +13,7 @@
                 "Waveshare RP2040-Zero (RP2040) :: rp2040:rp2040:waveshare_rp2040_zero|RP2040",
                 "Waveshare RP2040-Plus (RP2040) :: rp2040:rp2040:waveshare_rp2040_plus|RP2040"
             ],
-            "default": "Raspberry Pi Pico (RP2040) :: rp2040:rp2040:rpipico|RP2040"
+            "default": "Raspberry Pi Pico W (RP2040) :: rp2040:rp2040:rpipicow|RP2040"
         },
         {
             "id": "libraryName",

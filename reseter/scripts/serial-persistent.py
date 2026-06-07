@@ -6,7 +6,7 @@ Waits for a serial device, connects, reads continuously, and when the device
 disappears it goes back to waiting. Ctrl+C exits.
 
 Supported modes:
-- pico  : only Pico USB CDC devices (RP2040 / RP2350), Debug Probe excluded
+- pico  : only Pico/RP2040 USB CDC devices, Debug Probe excluded
 - probe : only Raspberry Pi Debug Probe / Picoprobe
 - any   : any serial port (/dev/ttyACM* or /dev/ttyUSB*)
 
@@ -15,7 +15,6 @@ VID:PID filtering.
 """
 
 import argparse
-import atexit
 import glob
 import json
 import os
@@ -54,104 +53,11 @@ DEBUG_PROBE_IDS = {
     "2e8a:0004",  # Picoprobe older firmware
 }
 
-INSTANCE_LOCK_FD = None
-
-
-class PortBusyError(serial.SerialException):
-    """Raised when serial port is locked by another process."""
-
-
-def _read_lock_holder_pid(fd):
-    try:
-        with os.fdopen(os.dup(fd), "r", encoding="utf-8", errors="ignore") as handle:
-            value = handle.read().strip()
-    except Exception:
-        return None
-
-    if value and value.isdigit():
-        return int(value)
-
-    return None
-
-
-def _write_lock_holder_pid(fd):
-    os.ftruncate(fd, 0)
-    os.write(fd, f"{os.getpid()}\n".encode("utf-8"))
-    os.fsync(fd)
-
 
 def usb_id_str(vid, pid):
     if vid is None or pid is None:
         return None
     return f"{vid:04x}:{pid:04x}"
-
-
-def acquire_instance_lock(mode, replace_existing=False):
-    global INSTANCE_LOCK_FD
-
-    lock_path = f"/tmp/reseter-serial-persistent-{mode}.lock"
-    fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o644)
-
-    import fcntl
-
-    try:
-        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except BlockingIOError:
-        holder_pid = _read_lock_holder_pid(fd)
-
-        if not replace_existing:
-            holder_text = str(holder_pid) if holder_pid is not None else "unknown"
-            os.close(fd)
-            print(
-                f"{YELLOW}[WARN] Another persistent monitor (mode={mode}) is already running"
-                f" [pid={holder_text}]. Exiting duplicate instance.{NC}"
-            )
-            return False
-
-        if holder_pid is not None and holder_pid != os.getpid():
-            try:
-                os.kill(holder_pid, signal.SIGTERM)
-            except ProcessLookupError:
-                pass
-            except PermissionError:
-                os.close(fd)
-                print(
-                    f"{RED}[ERROR] Cannot replace monitor pid={holder_pid} (permission denied).{NC}"
-                )
-                return False
-
-        locked = False
-        for _ in range(40):
-            try:
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                locked = True
-                break
-            except BlockingIOError:
-                time.sleep(0.1)
-
-        if not locked:
-            holder_text = str(holder_pid) if holder_pid is not None else "unknown"
-            os.close(fd)
-            print(
-                f"{RED}[ERROR] Failed to take over monitor lock (mode={mode}, holder={holder_text}).{NC}"
-            )
-            return False
-
-    _write_lock_holder_pid(fd)
-    INSTANCE_LOCK_FD = fd
-    return True
-
-
-def release_instance_lock():
-    global INSTANCE_LOCK_FD
-    if INSTANCE_LOCK_FD is None:
-        return
-
-    try:
-        os.close(INSTANCE_LOCK_FD)
-    except Exception:
-        pass
-    INSTANCE_LOCK_FD = None
 
 
 def is_serial_candidate(device):
@@ -180,29 +86,6 @@ def classify_port(port_info):
     if uid is not None and uid.startswith("2e8a:"):
         return "pico"
 
-    # Heuristic fallback for boards exposing non-Raspberry VID:PID pairs.
-    text_parts = [
-        getattr(port_info, "description", ""),
-        getattr(port_info, "manufacturer", ""),
-        getattr(port_info, "product", ""),
-        getattr(port_info, "interface", ""),
-        getattr(port_info, "hwid", ""),
-    ]
-    text_blob = " ".join(part for part in text_parts if part).lower()
-
-    if "debug probe" in text_blob or "picoprobe" in text_blob or "cmsis-dap" in text_blob:
-        return "probe"
-
-    pico_keywords = (
-        "raspberry pi pico",
-        "pico 2",
-        "pico2",
-        "rp2040",
-        "rp2350",
-    )
-    if any(keyword in text_blob for keyword in pico_keywords):
-        return "pico"
-
     return "other"
 
 
@@ -226,13 +109,6 @@ def format_port_info(port_info):
     return f"{port_info.device}[{kind}|{uid}|{desc}]"
 
 
-def classify_device(device_path):
-    for port in list_serial_ports():
-        if port.device == device_path:
-            return classify_port(port)
-    return "other"
-
-
 def find_settings():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_dir = os.path.dirname(script_dir)
@@ -250,7 +126,7 @@ def find_settings():
 
 def get_preferred_port(cli_port):
     if cli_port:
-        return cli_port, True
+        return cli_port
 
     settings = find_settings()
     candidates = [
@@ -261,39 +137,31 @@ def get_preferred_port(cli_port):
 
     for port in candidates:
         if isinstance(port, str) and port.strip():
-            return port.strip(), False
+            return port.strip()
 
-    return "", False
+    return ""
 
 
-def find_port(mode, preferred_port="", strict_preferred=False):
+def find_port(mode, preferred_port=""):
     if preferred_port:
         if os.path.exists(preferred_port):
-            if strict_preferred:
-                return preferred_port, f"preferred:{preferred_port}"
-
-            preferred_kind = classify_device(preferred_port)
-            if mode == "any" or preferred_kind == mode:
-                return preferred_port, f"preferred:{preferred_port}"
-        if strict_preferred:
-            return None, f"preferred-missing:{preferred_port}"
+            return preferred_port, f"preferred:{preferred_port}"
+        return None, f"preferred-missing:{preferred_port}"
 
     ports = list_serial_ports()
     for port in ports:
         if port_matches_mode(port, mode):
             return port.device, format_port_info(port)
 
-    if preferred_port:
-        return None, f"preferred-missing:{preferred_port};not-found"
     return None, "not-found"
 
 
-def wait_for_device(mode, preferred_port="", strict_preferred=False):
+def wait_for_device(mode, preferred_port=""):
     spinner = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
     i = 0
 
     while True:
-        port, reason = find_port(mode, preferred_port, strict_preferred)
+        port, reason = find_port(mode, preferred_port)
 
         if port:
             print(f"\r{' ' * 140}\r", end="", flush=True)
@@ -325,7 +193,7 @@ def _clear_hupcl(fd: int) -> None:
     """Clear HUPCL so the kernel does not drop DTR on close (Linux only).
 
     Without this, closing the serial port lowers DTR, which causes the
-    RP2040 USB CDC to reset and re-enumerate — triggering a spurious
+    RP2040 USB CDC to reset and re-enumerate - triggering a spurious
     disconnect/reconnect cycle in the monitor.
     """
     import fcntl
@@ -345,7 +213,31 @@ def _clear_hupcl(fd: int) -> None:
         pass
 
 
-def open_serial(port, baud):
+def kill_existing_monitors(port):
+    """Kill other serial-persistent.py processes that have this port open."""
+    try:
+        output = os.popen(f"lsof {port} 2>/dev/null").read()
+        for line in output.split('\n'):
+            if 'serial-persistent.py' in line or 'python3' in line:
+                parts = line.split()
+                if len(parts) >= 2:
+                    try:
+                        pid = int(parts[1])
+                        if pid != os.getpid():
+                            os.kill(pid, signal.SIGTERM)
+                            print(f"{YELLOW}Killed existing process PID {pid} on {port}{NC}")
+                            time.sleep(0.5)
+                    except (ValueError, ProcessLookupError):
+                        pass
+    except Exception:
+        pass
+
+
+def open_serial(port, baud, replace_existing=False):
+    if replace_existing:
+        kill_existing_monitors(port)
+        time.sleep(0.3)
+
     ser = serial.Serial()
     ser.port         = port
     ser.baudrate     = baud
@@ -360,16 +252,7 @@ def open_serial(port, baud):
     except Exception:
         pass
 
-    try:
-        ser.open()
-    except serial.SerialException as err:
-        message = str(err).lower()
-        lock_conflict = "exclusively lock port" in message or "resource temporarily unavailable" in message
-
-        if lock_conflict:
-            raise PortBusyError(str(err)) from err
-
-        raise
+    ser.open()
     _clear_hupcl(ser.fd)
 
     try:
@@ -392,12 +275,9 @@ def open_serial(port, baud):
     return ser
 
 
-def monitor(port, baud):
+def monitor(port, baud, replace_existing=False):
     try:
-        ser = open_serial(port, baud)
-    except PortBusyError as e:
-        print(f"{YELLOW}Port busy ({port}): {e}{NC}")
-        return "busy"
+        ser = open_serial(port, baud, replace_existing)
     except serial.SerialException as e:
         print(f"{RED}Cannot open {port}: {e}{NC}")
         return "error"
@@ -465,19 +345,14 @@ def parse_args():
     parser.add_argument(
         "--replace-existing",
         action="store_true",
-        help="Replace running monitor process in the same mode",
+        help="Kill existing serial-persistent.py processes on the same port before connecting",
     )
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
-
-    if not acquire_instance_lock(args.mode, args.replace_existing):
-        return
-    atexit.register(release_instance_lock)
-
-    preferred, strict_preferred = get_preferred_port(args.port)
+    preferred = get_preferred_port(args.port)
 
     print()
     print(f"{BOLD}{CYAN}╔══════════════════════════════════════════════════════════╗{NC}")
@@ -486,17 +361,18 @@ def main():
     print(f"  Baud:   {GREEN}{args.baud}{NC}")
     print(f"  Mode:   {GREEN}{args.mode}{NC}")
     print(f"  Port:   {GREEN}{preferred if preferred else 'auto'}{NC}")
+    if args.replace_existing:
+        print(f"  Replace: {GREEN}Yes (will kill existing monitors){NC}")
     print(f"  {YELLOW}Ctrl+C{NC} to stop")
     print()
 
     while True:
-        preferred, strict_preferred = get_preferred_port(args.port)
-        port, _ = find_port(args.mode, preferred, strict_preferred)
+        port, _ = find_port(args.mode, preferred)
 
         if not port:
-            port = wait_for_device(args.mode, preferred, strict_preferred)
+            port = wait_for_device(args.mode, preferred)
 
-        result = monitor(port, args.baud)
+        result = monitor(port, args.baud, args.replace_existing)
 
         if result == "quit":
             print(f"\n{CYAN}Done.{NC}")
@@ -506,10 +382,6 @@ def main():
             print(f"\n{DIM}{'─' * 80}{NC}")
             print(f"{YELLOW}Device disconnected: {port}{NC}\n")
             time.sleep(0.5)
-            continue
-
-        if result == "busy":
-            time.sleep(1.0)
             continue
 
         if result == "error":

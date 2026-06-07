@@ -63,6 +63,20 @@ def normalize_hex(value: str | None) -> str:
     return f"0x{num:04x}"
 
 
+def board_id(fqbn: str | None) -> str:
+    """Return canonical board id: package:architecture:board.
+
+    Keeps user-selected board options intact by comparing only the first
+    three FQBN segments.
+    """
+    if not fqbn:
+        return ""
+    parts = str(fqbn).strip().split(":")
+    if len(parts) < 3:
+        return ""
+    return ":".join(parts[:3])
+
+
 def run_json_command(cmd: list[str]) -> dict[str, Any]:
     result = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if result.returncode != 0:
@@ -173,12 +187,25 @@ def main() -> int:
 
     if selected_pid and selected_pid in PID_TO_BOARD:
         fqbn, description = PID_TO_BOARD[selected_pid]
-        if settings.get("arduino.fqbn") != fqbn:
-            settings["arduino.fqbn"] = fqbn
-            changed = True
-        if settings.get("arduino.boardDescription") != description:
-            settings["arduino.boardDescription"] = description
-            changed = True
+        current_fqbn = str(settings.get("arduino.fqbn", "") or "")
+        current_board_id = board_id(current_fqbn)
+        detected_board_id = board_id(fqbn)
+
+        # Do not override an explicit user-selected board variant.
+        # Only fill FQBN when missing, or refresh when already on same board id.
+        can_update_board = (not current_board_id) or (current_board_id == detected_board_id)
+        if can_update_board:
+            if settings.get("arduino.fqbn") != fqbn:
+                settings["arduino.fqbn"] = fqbn
+                changed = True
+            if settings.get("arduino.boardDescription") != description:
+                settings["arduino.boardDescription"] = description
+                changed = True
+        elif not args.quiet:
+            print(
+                "[INFO] Auto-detect: keeping user-selected board "
+                f"'{current_fqbn}' (detected '{fqbn}')"
+            )
 
         if serial_port and settings.get("arduino.uploadPort") != serial_port:
             settings["arduino.uploadPort"] = serial_port

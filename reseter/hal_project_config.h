@@ -13,18 +13,8 @@
 
 /* ── Modules not used by RouterWatchdog ──────────────────────────────── */
 
-#define HAL_DISABLE_GPS
-#define HAL_DISABLE_THERMOCOUPLE
-#define HAL_DISABLE_UART
-#define HAL_DISABLE_SWSERIAL
-#define HAL_DISABLE_DISPLAY
-#define HAL_DISABLE_RGB_LED
-#define HAL_DISABLE_EXTERNAL_ADC
-#define HAL_DISABLE_CAN
-#define HAL_DISABLE_EEPROM
-#define HAL_DISABLE_I2C
-#define HAL_DISABLE_PWM_FREQ
-#define HAL_DISABLE_UNITY
-#define HAL_ENABLE_CJSON
 #define HAL_ENABLE_MQTT
 #define HAL_ENABLE_WIREGUARD
+#define HAL_ENABLE_CJSON
+#define HAL_ENABLE_WIFI
+#define HAL_ENABLE_TIME
