@@ -10,6 +10,7 @@
  */
 
 #define PICO_W
+#define HAL_PROVIDE_APP_ENTRY
 
 /* ── Modules not used by RouterWatchdog ──────────────────────────────── */
 

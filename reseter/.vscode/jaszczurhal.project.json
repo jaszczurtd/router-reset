@@ -1,0 +1,22 @@
+{
+    "$schema": "../../../libraries/JaszczurHAL/vscode/schema/jh_vscode_project.schema.json",
+    "project": "router-reset",
+    "module": "reseter",
+    "toolchain": "cmake",
+    "fqbn": "rp2040:rp2040:rpipicow",
+    "buildDir": "${project}/.build",
+    "cmakeBuildDir": "${project}/.build/cmake",
+    "identity": {
+        "enabled": true,
+        "usbManufacturer": "Jaszczur",
+        "usbProduct": "Router Reset",
+        "byIdHint": "Router_Reset"
+    },
+    "upload": {
+        "strategy": "serial"
+    },
+    "artifacts": {
+        "elf": "${buildDir}/firmware.elf",
+        "uf2": "${buildDir}/firmware.uf2"
+    }
+}

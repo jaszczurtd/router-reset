@@ -1,6 +1,7 @@
 #include "stateMachine.hpp"
 
 #include <cstdint>
+#include <hal/hal_app.h>
 
 static int currentState = WIFI_NOT_CONNECTED;
 static int wifiConnectionProcessSeconds = 0;
@@ -360,4 +361,12 @@ void mainLoop() {
     break;
 
   }
+}
+
+extern "C" void app_start(void) {
+  initialization();
+}
+
+extern "C" void app_task0(void) {
+  mainLoop();
 }

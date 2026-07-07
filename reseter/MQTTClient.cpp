@@ -3,7 +3,6 @@
 #include <Credentials.h>
 #include <JaszczurHAL.h>
 #include <tools.h>
-#include <utils/cJSON.h>
 
 #include <cstdint>
 #include <cstdio>
