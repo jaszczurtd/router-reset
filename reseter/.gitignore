@@ -129,3 +129,5 @@ src/ECU/doc/*
 .build*
 reseter/.build/*
 
+# jh-vscode user-local target, board and serial-port selection
+.vscode/jaszczurhal.local.json
