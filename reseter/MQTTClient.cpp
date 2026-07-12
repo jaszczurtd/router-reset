@@ -97,8 +97,11 @@ static bool reconnect() {
     const char *hostName = getMyHostname();
     hal_watchdog_feed();
 
+    const char *mqttUser = getCredential(CR_MQTT_USER);
+    const char *mqttPassword = getCredential(CR_MQTT_PASSWORD);
+
     deb("MQTT: attempting connection to broker: %s", hostName);
-    if(hal_mqtt_connect_auth(hostName, MQTT_USER, MQTT_PASSWORD)) {
+    if(hal_mqtt_connect_auth(hostName, mqttUser, mqttPassword)) {
       hal_watchdog_feed();
 
       snprintf(topic, sizeof(topic), "%s%s", MQTT_TOPIC_STATUS, hostName);
@@ -110,8 +113,13 @@ static bool reconnect() {
 
       deb("MQTT: (re)connected successfully!");
 
+      clearAndFreeSecret((char*)mqttUser);
+      clearAndFreeSecret((char*)mqttPassword);
       return true;
     }
+    clearAndFreeSecret((char*)mqttUser);
+    clearAndFreeSecret((char*)mqttPassword);
+
     deb("MQTT: connect failed! state=%d", hal_mqtt_state());
 
   } else {

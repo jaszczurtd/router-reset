@@ -22,7 +22,10 @@ void routerEnabled(bool state) {
 }
 
 void startWifiConnection() {
-  deb("trying to connect to WiFi: %s", WIFI_SSID);
+  const char *ssid = getCredential(CR_WIFI_SSID);
+  const char *password = getCredential(CR_WIFI_PASSWORD);
+  
+  deb("trying to connect to WiFi: %s", ssid);
 
   hal_watchdog_feed();
   if (!hal_wifi_disconnect(true)) {
@@ -35,12 +38,15 @@ void startWifiConnection() {
   if (!hal_wifi_set_mode(HAL_WIFI_MODE_STA)) {
     derr("hal_wifi_set_mode(STA) failed");
   }
-  if (!hal_wifi_begin_station(WIFI_SSID, WIFI_PASSWORD, true)) {
+  if (!hal_wifi_begin_station(ssid, password, true)) {
     derr("hal_wifi_begin_station failed");
   }
   if (!hal_wifi_set_timeout_ms(MAX_TIMEOUT)) {
     derr("hal_wifi_set_timeout_ms failed");
   }
+  clearAndFreeSecret((char*)ssid);
+  clearAndFreeSecret((char*)password);
+
   hal_watchdog_feed();
 }
 
@@ -55,20 +61,31 @@ void stopWifiConnection() {
 }
 
 static bool startWireGuard() {
+  const char *endpoint = getCredential(CR_WG_ENDPOINT);
+  const char *serverPublicKey = getCredential(CR_WG_SERVER_PUBLIC_KEY);
+  const char *allowedIP = getCredential(CR_WG_ALLOWED_IP);
+  const char *allowedMask = getCredential(CR_WG_ALLOWED_MASK);
+  const char *privateKey = getWireguardPrivateKey(getMyMAC());
+
   bool ok = hal_wireguard_begin_advanced_text(
       getWireguardLocalIP(getMyMAC()),
-      getWireguardPrivateKey(getMyMAC()),
-      WG_ENDPOINT,
-      WG_SERVER_PUBLIC_KEY,
-      WG_ENDPOINT_PORT,
-      WG_ALLOWED_IP,
-      WG_ALLOWED_MASK
+      privateKey,
+      endpoint,
+      serverPublicKey,
+      getCredentialInt(CR_WG_ENDPOINT_PORT),
+      allowedIP,
+      allowedMask
     );
 
   if (!ok) {
     deb("WireGuard initialization failed");
   }
 
+  clearAndFreeSecret((char*)endpoint);
+  clearAndFreeSecret((char*)serverPublicKey);
+  clearAndFreeSecret((char*)allowedIP);
+  clearAndFreeSecret((char*)allowedMask);
+  clearAndFreeSecret((char*)privateKey);
   return ok;
 }
 
@@ -120,10 +137,13 @@ void mainLoop() {
     case WIFI_CONNECTING: {
       
       if(hal_wifi_is_connected()) {
+        const char *ssid = getCredential(CR_WIFI_SSID);
+        const char *ntpServer1 = getCredential(CR_NTPSERVER1);
+        const char *ntpServer2 = getCredential(CR_NTPSERVER2);
 
         char ipBuf[20];
         hal_wifi_get_local_ip(ipBuf, sizeof(ipBuf));
-        deb("connected to WiFi %s, IP: %s", WIFI_SSID, ipBuf);
+        deb("connected to WiFi %s, IP: %s", ssid, ipBuf);
 
         hal_gpio_write(LED_BUILTIN, true);  
 
@@ -131,6 +151,10 @@ void mainLoop() {
 
         hal_time_set_timezone("CET-1CEST,M3.5.0/2,M10.5.0/3");
         hal_time_sync_ntp(ntpServer1, ntpServer2);
+
+        clearAndFreeSecret((char*)ssid);
+        clearAndFreeSecret((char*)ntpServer1);
+        clearAndFreeSecret((char*)ntpServer2);
 
         ntpSyncStartMs = hal_millis();
         t0 = hal_millis();
@@ -141,7 +165,9 @@ void mainLoop() {
           t0 = hal_millis();
           hal_gpio_write(LED_BUILTIN, !hal_gpio_read(LED_BUILTIN));
 
-          deb("mac:%s connecting to %s for %ld seconds...", getMyMAC(), WIFI_SSID, wifiConnectionProcessSeconds);
+          const char *ssid = getCredential(CR_WIFI_SSID);
+          deb("mac:%s connecting to %s for %ld seconds...", getMyMAC(), ssid, wifiConnectionProcessSeconds);
+          clearAndFreeSecret((char*)ssid);
 
           if(wifiConnectionProcessSeconds > 0 && 
               wifiConnectionProcessSeconds % SECONDS_IN_MINUTE == 0) {
@@ -274,8 +300,10 @@ void mainLoop() {
         break;
       }
 
-      MQTTstart(MQTT_BROKER_WIREGUARD, MQTT_BROKER_PORT);
+      const char *brokerIP = getCredential(CR_MQTT_BROKER_WIREGUARD);
+      MQTTstart(brokerIP, getCredentialInt(CR_MQTT_BROKER_PORT));
       deb("MQTT client launched");
+      clearAndFreeSecret((char*)brokerIP);
 
       hal_gpio_write(LED_BUILTIN, true);  
 

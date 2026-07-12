@@ -7,3 +7,4 @@
 
 const char *getMyMAC(void);
 const char *getMyHostname(void);
+void clearAndFreeSecret(char *secret);

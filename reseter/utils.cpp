@@ -14,3 +14,15 @@ const char *getMyHostname(void) {
   return (const char *)hostname_str;
 }
 
+void clearAndFreeSecret(char *secret) {
+  if (secret == nullptr) {
+    return;
+  }
+
+  volatile char *bytes = secret;
+  const size_t length = strlen(secret);
+  for (size_t i = 0; i < length; ++i) {
+    bytes[i] = '\0';
+  }
+  free(secret);
+}
