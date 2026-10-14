@@ -9,8 +9,6 @@
  * build.
  */
 
-#define PICO_W
-
 #ifndef HAL_PROVIDE_APP_ENTRY
 #define HAL_PROVIDE_APP_ENTRY
 #endif

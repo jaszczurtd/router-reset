@@ -1,7 +1,6 @@
 #pragma once
 
 #include <JaszczurHAL.h>
-#include <tools.h>
 #include <Credentials.h>
 #include <time.h>
 

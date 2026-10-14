@@ -1,7 +1,7 @@
 #include "stateMachine.hpp"
 
 #include <cstdint>
-#include <hal/hal_app.h>
+#include <hal/core/hal_app.h>
 
 static int currentState = WIFI_NOT_CONNECTED;
 static int wifiConnectionProcessSeconds = 0;
@@ -96,7 +96,7 @@ static void stopWireGuard() {
 }
 
 void initialization() {
-  debugInit();
+  hal_debug_init_default();
 
   //relay 0
   hal_gpio_set_mode(ROUTER_RELAY_PIN, HAL_GPIO_OUTPUT);
@@ -161,8 +161,7 @@ void mainLoop() {
         setState(NTP_SYNC);
 
       } else {
-        if(hal_millis() - t0 > SECOND) {
-          t0 = hal_millis();
+        if (hal_millis_interval_elapsed(hal_millis(), &t0, SECOND)) {
           hal_gpio_write(LED_BUILTIN, !hal_gpio_read(LED_BUILTIN));
 
           const char *ssid = getCredential(CR_WIFI_SSID);
@@ -208,14 +207,15 @@ void mainLoop() {
         break;
       }
 
-      if (hal_millis() - ntpSyncStartMs > SECOND * NTP_SYNC_TIMEOUT_SECONDS) {
+      if (hal_millis_interval_elapsed(
+              hal_millis(), &ntpSyncStartMs,
+              SECOND * NTP_SYNC_TIMEOUT_SECONDS)) {
         deb("NTP sync timeout, reconnecting WiFi...");
         setState(WIFI_NOT_CONNECTED);
         break;
       }
 
-      if (hal_millis() - t0 > SECOND) {
-        t0 = hal_millis();
+      if (hal_millis_interval_elapsed(hal_millis(), &t0, SECOND)) {
         hal_gpio_write(LED_BUILTIN, !hal_gpio_read(LED_BUILTIN));
         deb("waiting for NTP time sync...");
       }
@@ -265,14 +265,15 @@ void mainLoop() {
         handshakeKickStarted = true;
       }
 
-      if (hal_millis() - wgHandshakeStartMs > SECOND * WG_HANDSHAKE_TIMEOUT_SECONDS) {
+      if (hal_millis_interval_elapsed(
+              hal_millis(), &wgHandshakeStartMs,
+              SECOND * WG_HANDSHAKE_TIMEOUT_SECONDS)) {
         deb("WireGuard handshake timeout");
         setState(WIFI_RESET_START);
         break;
       }
 
-      if (hal_millis() - t0 > SECOND) {
-        t0 = hal_millis();
+      if (hal_millis_interval_elapsed(hal_millis(), &t0, SECOND)) {
         hal_gpio_write(LED_BUILTIN, !hal_gpio_read(LED_BUILTIN));
         deb("waiting for WireGuard handshake...");
       }
@@ -288,7 +289,8 @@ void mainLoop() {
     break;
 
     case WIFI_RESET_END: {
-      if(hal_millis() - t0 > SECOND * WIFI_MAX_RESET_TIME_SECONDS) {
+      if (hal_millis_interval_elapsed(
+              hal_millis(), &t0, SECOND * WIFI_MAX_RESET_TIME_SECONDS)) {
         setState(WIFI_NOT_CONNECTED);
       }
     }
@@ -319,7 +321,7 @@ void mainLoop() {
         setState(WG_HANDSHAKE);
         break;
       }
-      if(hal_millis() - t0 > SECOND) {
+      if (hal_millis_interval_elapsed(hal_millis(), &t0, SECOND)) {
         unsigned long t_ping;
         int res1 = -1, res2 = -1;    
         unsigned long dt1 = 0, dt2 = 0;
@@ -370,8 +372,8 @@ void mainLoop() {
             howManyLost2++;
           }
         }
-        percentLost1 = percentFrom(howManyLost1, MAX_PINGS);
-        percentLost2 = percentFrom(howManyLost2, MAX_PINGS);
+        percentLost1 = hal_math_percent_from_value(howManyLost1, MAX_PINGS);
+        percentLost2 = hal_math_percent_from_value(howManyLost2, MAX_PINGS);
 
         deb("percent of lost packet for %s is:%d%%, for %s is:%d%%", 
           PING_ONE, percentLost1, PING_TWO, percentLost2);
@@ -380,7 +382,6 @@ void mainLoop() {
             percentLost2 > MAX_PERCENT_OF_LOST_PINGS) {
             setState(WIFI_RESET_START);
         }
-
         t0 = hal_millis();
       }
 

@@ -2,7 +2,8 @@
 
 #include <Credentials.h>
 #include <JaszczurHAL.h>
-#include <tools.h>
+#include <hal/codecs/cjson/cJSON.h>
+#include <hal/timers/smart_timers/SmartTimers.h>
 
 #include <cstdint>
 #include <cstdio>

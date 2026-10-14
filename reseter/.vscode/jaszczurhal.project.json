@@ -3,14 +3,17 @@
     "project": "router-reset",
     "module": "reseter",
     "toolchain": "cmake",
-    "fqbn": "rp2040:rp2040:rpipicow",
+    "target": "rp2040",
+    "board": "picow",
     "buildDir": "${project}/.build",
     "cmakeBuildDir": "${project}/.build/cmake",
     "cmake": {
         "sourceDir": "${project}/../../libraries/JaszczurHAL/cmake/jh_firmware_project",
         "cache": {
             "JH_PROJECT_DIR": "${project}",
-            "ARDUINO_LIBRARIES": "${project}/../../libraries"
+            "JH_MODULE_NAME": "reseter",
+            "JH_EXTRA_INCLUDES": "${project}/../../libraries/Credentials/src",
+            "JH_LINK_LIBRARIES": "${project}/../../libraries/Credentials/src/cortex-m0plus/libCredentials.a"
         }
     },
     "targetProfiles": {

@@ -1,5 +1,9 @@
 #include "utils.hpp"
 
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+
 char mac_str[sizeof("FF:FF:FF:FF:FF:FF") + 1];
 const char *getMyMAC(void) {
   if (!hal_wifi_get_mac(mac_str, sizeof(mac_str))) {
