@@ -17,8 +17,35 @@ static unsigned long wgHandshakeStartMs = 0;
 static bool handshakeKickStarted = false;
 static unsigned long ntpSyncStartMs = 0;
 
+// The relay of device_tree.json's routerRelay node; its activeLow sets the
+// level that powers the router.
 void routerEnabled(bool state) {
-  hal_gpio_write(ROUTER_RELAY_PIN, state); 
+  hal_gpio_write(JH_HW_NODE_ROUTER_RELAY_PIN_OUT,
+                 state != (bool)JH_HW_NODE_ROUTER_RELAY_PROP_ACTIVE_LOW);
+}
+
+// The board status LED: a plain GPIO (Pico W, Pico 2 W) or the addressable
+// WS2812 of the ESP32-S3-Zero.
+static bool statusLedOn = false;
+
+static void statusLed(bool on) {
+  statusLedOn = on;
+#if defined(HAL_BOARD_STATUS_LED_KIND_ADDRESSABLE)
+  (void)hal_rgb_led_set_color(on ? HAL_RGB_LED_GREEN : HAL_RGB_LED_NONE);
+#else
+  hal_gpio_write(HAL_LED_BUILTIN, on);
+#endif
+}
+
+static void statusLedToggle() { statusLed(!statusLedOn); }
+
+static void statusLedInit() {
+#if defined(HAL_BOARD_STATUS_LED_KIND_ADDRESSABLE)
+  (void)hal_rgb_led_init_board_status();
+#else
+  hal_gpio_set_mode(HAL_LED_BUILTIN, HAL_GPIO_OUTPUT);
+#endif
+  statusLed(false);
 }
 
 void startWifiConnection() {
@@ -98,12 +125,8 @@ static void stopWireGuard() {
 void initialization() {
   hal_debug_init_default();
 
-  //relay 0
-  hal_gpio_set_mode(ROUTER_RELAY_PIN, HAL_GPIO_OUTPUT);
-
-  //led
-  hal_gpio_set_mode(LED_BUILTIN, HAL_GPIO_OUTPUT);
-  hal_gpio_write(LED_BUILTIN, false);  
+  hal_gpio_set_mode(JH_HW_NODE_ROUTER_RELAY_PIN_OUT, HAL_GPIO_OUTPUT);
+  statusLedInit();
 
   hal_watchdog_enable(MAX_DEAD_TIME, false);
 }
@@ -145,7 +168,7 @@ void mainLoop() {
         hal_wifi_get_local_ip(ipBuf, sizeof(ipBuf));
         deb("connected to WiFi %s, IP: %s", ssid, ipBuf);
 
-        hal_gpio_write(LED_BUILTIN, true);  
+        statusLed(true);
 
         hal_wifi_set_timeout_ms(PING_TIMEOUT);
 
@@ -162,7 +185,7 @@ void mainLoop() {
 
       } else {
         if (hal_millis_interval_elapsed(hal_millis(), &t0, SECOND)) {
-          hal_gpio_write(LED_BUILTIN, !hal_gpio_read(LED_BUILTIN));
+          statusLedToggle();
 
           const char *ssid = getCredential(CR_WIFI_SSID);
           deb("mac:%s connecting to %s for %ld seconds...", getMyMAC(), ssid, wifiConnectionProcessSeconds);
@@ -216,7 +239,7 @@ void mainLoop() {
       }
 
       if (hal_millis_interval_elapsed(hal_millis(), &t0, SECOND)) {
-        hal_gpio_write(LED_BUILTIN, !hal_gpio_read(LED_BUILTIN));
+        statusLedToggle();
         deb("waiting for NTP time sync...");
       }
     }
@@ -274,7 +297,7 @@ void mainLoop() {
       }
 
       if (hal_millis_interval_elapsed(hal_millis(), &t0, SECOND)) {
-        hal_gpio_write(LED_BUILTIN, !hal_gpio_read(LED_BUILTIN));
+        statusLedToggle();
         deb("waiting for WireGuard handshake...");
       }
     }
@@ -307,7 +330,7 @@ void mainLoop() {
       deb("MQTT client launched");
       clearAndFreeSecret((char*)brokerIP);
 
-      hal_gpio_write(LED_BUILTIN, true);  
+      statusLed(true);
 
       t0 = hal_millis();
       setState(CONNECTED_AND_WORKING);

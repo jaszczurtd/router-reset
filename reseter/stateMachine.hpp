@@ -7,7 +7,6 @@
 #include "utils.hpp"
 #include "MQTTClient.hpp"
 
-#define ROUTER_RELAY_PIN 0
 
 #define DEVICE_DOMAIN "RouterWatchdog"
 

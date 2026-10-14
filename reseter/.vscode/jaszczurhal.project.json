@@ -3,8 +3,7 @@
     "project": "router-reset",
     "module": "reseter",
     "toolchain": "cmake",
-    "target": "rp2040",
-    "board": "picow",
+    "assembly": "picow",
     "buildDir": "${project}/.build",
     "cmakeBuildDir": "${project}/.build/cmake",
     "cmake": {
@@ -12,20 +11,32 @@
         "cache": {
             "JH_PROJECT_DIR": "${project}",
             "JH_MODULE_NAME": "reseter",
-            "JH_EXTRA_INCLUDES": "${project}/../../libraries/Credentials/src",
-            "JH_LINK_LIBRARIES": "${project}/../../libraries/Credentials/src/cortex-m0plus/libCredentials.a"
+            "JH_EXTRA_INCLUDES": "${project}/../../libraries/Credentials/src"
         }
     },
     "targetProfiles": {
-        "stm32g474": {
+        "rp2040": {
             "cmake": {
                 "cache": {
-                    "JH_EXTRA_INCLUDES": "${project}/../../libraries/Credentials/src",
-                    "JH_LINK_LIBRARIES": "${project}/../../libraries/Credentials/build/stm32g474/libCredentials.a"
+                    "JH_LINK_LIBRARIES": "${project}/../../libraries/Credentials/src/cortex-m0plus/libCredentials.a"
+                }
+            }
+        },
+        "rp2350-arm": {
+            "cmake": {
+                "cache": {
+                    "JH_LINK_LIBRARIES": "${project}/../../libraries/Credentials/build/rp2350-arm/libCredentials.a"
                 }
             },
             "upload": {
-                "strategy": "openocd"
+                "strategy": "serial"
+            }
+        },
+        "esp32s3": {
+            "cmake": {
+                "cache": {
+                    "JH_LINK_LIBRARIES": "${project}/../../libraries/Credentials/build/esp32s3/libCredentials.a"
+                }
             }
         }
     },
