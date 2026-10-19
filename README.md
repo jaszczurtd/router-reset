@@ -15,10 +15,10 @@ The firmware in `reseter/` runs on [JaszczurHAL](https://github.com/jaszczurtd/J
 The relay is active-high on every board. Build one assembly with:
 
 ```sh
-../../libraries/JaszczurHAL/vscode/entry/jh-vscode build --project "$PWD" --assembly pico2w
+../../JaszczurHAL/vscode/entry/jh-vscode build --project "$PWD" --assembly pico2w
 ```
 
-The firmware links the private `Credentials` library from `../../libraries/Credentials`, built for each target: `src/cortex-m0plus/libCredentials.a` for the Pico W and `build/<target>/libCredentials.a` (`rp2350-arm`, `esp32s3`) for the others. The Credentials template of [Ford-Mondeo-MK-DPF-Tracker](https://github.com/jaszczurtd/Ford-Mondeo-MK-DPF-Tracker) builds these archives from your own data.
+The firmware links the private `Credentials` library from `../../Credentials`, built for each target as `build/<target>/libCredentials.a` (`rp2040` for the Pico W, `rp2350-arm` and `esp32s3` for the others). The Credentials template of [Ford-Mondeo-MK-DPF-Tracker](https://github.com/jaszczurtd/Ford-Mondeo-MK-DPF-Tracker) builds these archives from your own data.
 
 Ideal for home networks experiencing unstable Internet where a physical restart of the router often solves the issue.
 
